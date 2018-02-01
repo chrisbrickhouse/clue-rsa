@@ -42,35 +42,76 @@ class Player():
                             }
         self.shown_by = {}
         self.prob_dicts = [self.p_prob_dict,self.w_prob_dict,self.r_prob_dict]
-        
+
     def _receive_card(self,card):
         self.holding.add(card)
         self.unknown.discard(card)
         self._update_probs(card)
-        
-    def _update_probs(self,card):
+
+    def _update_probs(self,card,prob=0.0):
         if card.isupper():
             p = self.p_prob_dict[card]
-            self.p_prob_dict[card] = 0.0
-            n = [x for x in self.p_prob_dict if self.p_prob_dict[x] > 0.0]
-            diff = p/len(n)
-            for c in n:
-                self.p_prob_dict[c] += diff
+            self.p_prob_dict[card] = prob
+            s = sum([self.p_prob_dict[x] for x in self.p_prob_dict])
+            for c in self.p_prob_dict:
+                try:
+                    self.p_prob_dict[c] /= s
+                except:
+                    self._reset_prior('p')
         elif card.islower():
             p = self.w_prob_dict[card]
-            self.w_prob_dict[card] = 0.0
-            n = [x for x in self.w_prob_dict if self.w_prob_dict[x] > 0.0]
-            diff = p/len(n)
-            for c in n:
-                self.w_prob_dict[c] += diff
+            self.w_prob_dict[card] = prob
+            s = sum([self.w_prob_dict[x] for x in self.w_prob_dict])
+            for c in self.w_prob_dict:
+                try:
+                    self.w_prob_dict[c] /= s
+                except:
+                    self._reset_prior('w')
         else:
             p = self.r_prob_dict[card]
-            self.r_prob_dict[card] = 0.0
-            n = [x for x in self.r_prob_dict if self.r_prob_dict[x] > 0.0]
-            diff = p/len(n)
-            for c in n:
-                self.r_prob_dict[c] += diff
-            
+            self.r_prob_dict[card] = prob
+            s = sum([self.r_prob_dict[x] for x in self.r_prob_dict])
+            for c in self.r_prob_dict:
+                try:
+                    self.r_prob_dict[c] /= s
+                except:
+                    self._reset_prior('r')
+
+    def _reset_prior(self,prob_dict):
+        universe = self.unknown = set([
+                       'Y', 'P', 'G', 'B', 'R', 'W',
+                       'k', 'c', 'v', 'r', 'l', 'w',
+                       'Hl', 'Ln', 'Dn', 'Kt', 'Ba', 'Cn', 'Bi', 'Lb', 'St'
+                       ])
+        impossible = self.holding | self.shown
+        possible = universe - impossible
+        possible = list(possible)
+        if prob_dict == 'p':
+            possible = [x for x in possible if x.isupper()]
+            uniformPrior = 1.0 / len(possible)
+            for i in self.p_prob_dict:
+                if i in possible:
+                    self.p_prob_dict[i] = uniformPrior
+                else:
+                    self.p_prob_dict[i] = 0.0
+        elif prob_dict == 'w':
+            possible = [x for x in possible if x.islower()]
+            uniformPrior = 1.0 / len(possible)
+            for i in self.w_prob_dict:
+                if i in possible:
+                    self.w_prob_dict[i] = uniformPrior
+                else:
+                    self.w_prob_dict[i] = 0.0
+        elif prob_dict == 'r':
+            possible = [x for x in possible if len(x) == 2]
+            uniformPrior = 1.0 / len(possible)
+            for i in self.r_prob_dict:
+                if i in possible:
+                    self.r_prob_dict[i] = uniformPrior
+                else:
+                    self.r_prob_dict[i] = 0.0
+        print('Prior reset')
+
     def _get_p_dict(self,x):
         if x.isupper():
             return(self.p_prob_dict)
@@ -78,7 +119,7 @@ class Player():
             return(self.w_prob_dict)
         else:
             return(self.r_prob_dict)
-    
+
     def see_card(self,card,player):
         self._update_probs(card)
         self.shown.add(card)
@@ -86,7 +127,7 @@ class Player():
             self.shown_by[player]=set()
         self.shown_by[player].add(card)
         self.unknown.discard(card)
-        
+
     def guess(self):
         p = []
         for key in self.p_prob_dict:
@@ -109,87 +150,32 @@ class Player():
         joint_prob = x*y*z
         g = [a,b,c]
         return(set(g),joint_prob)
-        
-    def reason(self,guess,player,factor=.333,t=0.0):
-        possible_cards = guess.difference(self.holding)
-        if len(possible_cards) == 1:
-            card = possible_cards.pop()
-            p_dict = self._get_p_dict(card)
-            p = p_dict[card]
-            p_dict[card] = 0.0
-            n = [x for x in p_dict if p_dict[x] > t]
-            diff = p/len(n)
-            for i in n:
-                if i == card:
-                    continue
-                p_dict[i] += diff
-            return()
-        elif player not in self.shown_by:
-            return()
-        universe = self.shown.union(self.unknown)
-        known_not_held_by_player = self.shown - self.shown_by[player]
-        universe = universe - known_not_held_by_player
-        likely_shown = guess & self.shown_by[player]
-        unlikely_shown = universe - likely_shown
-        pos = likely_shown | unlikely_shown
-        print(len(likely_shown),len(unlikely_shown))
-        num = len(likely_shown)+len(unlikely_shown)
-        for c in pos:
-            if c in likely_shown:
-                dist_prob = float(len(likely_shown)) / len(universe)
-            else:
-                dist_prob = float(len(unlikely_shown)) / len(universe)
-            pd = self._get_p_dict(c)
-            old = pd[c]
-            pd[c] = pd[c]*dist_prob
-            print(old-pd[c])
-        if len(likely_shown) == 1 and len(unlikely_shown) == 0:
-            print('Watson!......................................')
-        '''
-        for part in possible_cards:
-            if part.isupper():
-                n = [x for x in self.p_prob_dict if self.p_prob_dict[x] > t]
-                if len(n) == 1 or self.p_prob_dict[part] == 0.0:
-                    continue
-                p = self.p_prob_dict[part]
-                q = 1.0-p
-                n_p = p*factor
-                n_q = 1.0 - n_p
-                not_part_p = n_q / len(n)
-                for i in n:
-                    if i == part:
-                        self.p_prob_dict[part] = n_p
-                    else:
-                        self.p_prob_dict[i] = not_part_p
-            elif part.islower():
-                n = [x for x in self.w_prob_dict if self.w_prob_dict[x] > t]
-                if len(n) == 1 or self.w_prob_dict[part] == 0.0:
-                    continue
-                p = self.w_prob_dict[part]
-                q = 1.0-p
-                n_p = p*factor
-                n_q = 1.0 - n_p
-                not_part_p = n_q / len(n)
-                for i in n:
-                    if i == part:
-                        self.w_prob_dict[part] = n_p
-                    else:
-                        self.w_prob_dict[i] = not_part_p
-            else:
-                n = [x for x in self.r_prob_dict if self.r_prob_dict[x] > t]
-                if len(n) == 1 or self.r_prob_dict[part] == 0.0:
-                    continue
-                p = self.r_prob_dict[part]
-                q = 1.0-p
-                n_p = p*factor
-                n_q = 1.0 - n_p
-                not_part_p = n_q / len(n)
-                for i in n:
-                    if i == part:
-                        self.r_prob_dict[part] = n_p
-                    else:
-                        self.r_prob_dict[i] = not_part_p
-            '''
+
+    def reason(self,guess):
+        print(self.p_prob_dict)
+        print(self.w_prob_dict)
+        print(self.r_prob_dict)
+        guess = list(guess)
+        newprobs = {}
+        for item in guess:
+            prob_dict = self._get_p_dict(item)
+            prior = prob_dict[item]
+            not_prior = 1.0 - prior
+            pos_test = 1.0
+            neg_test = 1.0
+            for other in [x for x in guess if x != item]:
+                not_other = 1.0 - self._get_p_dict(other)[other]
+                pos_test *= not_other
+            neg_g_prior = prior * (1.0 - pos_test)
+            numerator = neg_g_prior * prior
+            neg_g_not_prior = not_prior * neg_test
+            denominator = neg_g_not_prior * not_prior + numerator
+            if denominator == 0:
+                denominator = 0.00001
+            new_prob = numerator / denominator
+            newprobs[item]=new_prob
+        for i in newprobs:
+            self._update_probs(i,newprobs[i])
 
 def set_up(p,w,r,players=[[],[],[]]):
     p,w,r,c=choose(p,w,r)
@@ -207,7 +193,7 @@ def choose(p,w,r):
     c = r.pop()
     conf = set([a,b,c])
     return(p,w,r,conf)
-    
+
 def distribute(cards,players):
     n = len(players)
     i = 0
@@ -217,7 +203,7 @@ def distribute(cards,players):
         players[i]._receive_card(card)
         i+=1
 
-def main(n=3):
+def main(n=3,reason=True):
     guess_probs = []
     people = ['Y','P','G','B','R','W']
     weapons = ['k','c','v','r','l','w']
@@ -226,18 +212,18 @@ def main(n=3):
     players = []
     for _ in range(n):
         players.append(Player())
-        
+
     confidential = set_up(people,weapons,rooms,players)
 
     solved = False
     round_ = 1
-    count = 0
+    ply = 0
 
     while solved != True:
         print('Round %s' % str(round_))
         i=0
         for i in range(n):
-            count +=1
+            ply +=1
             #print('Player %s' % str(i))
             #print(len(players[i].unknown))
             guess, j_prob = players[i].guess()
@@ -267,7 +253,10 @@ def main(n=3):
                     if k == i or k == j:
                         continue
                     else:
-                        players[k].reason(guess,j)
+                        if reason:
+                            players[k].reason(guess)
+                        else:
+                            continue
             elif shown == False:
                 if guess == confidential:
                     solved = True
@@ -279,19 +268,22 @@ def main(n=3):
     print('Solved!')
     print(confidential)
     print(guess)
-    return(round_,i,count,guess_probs)
-    
+    return(round_,i,ply,guess_probs,reason)
+
 rounds = []
 winner = []
 counts = []
 ns = []
 guess_probs = []
-for _ in range(1000):
+reasoning = []
+for _ in range(10000):
     n = random.randint(2,6)
-    dat = main(n)
+    reason = random.choice([True,False])
+    dat = main(n,reason)
     rounds.append(dat[0])
     winner.append(dat[1])
     counts.append(dat[2])
+    reasoning.append(dat[4])
     g_p = [x+(n,) for x in dat[3]]
     guess_probs = guess_probs+g_p
     ns.append(n)
@@ -327,3 +319,12 @@ for i in range(2,7):
     plt.title('%s Players' % i)
 plt.show()
 print(mean(counts))
+ply_v_reasoning = list(zip(counts,reasoning))
+f,(tr,fr) = plt.subplots(2,1,sharex=True)
+plt.xlabel("Ply of Solution")
+f.text(0.04, 0.5, 'Frequency', va='center', rotation='vertical')
+tr.hist([x[0] for x in ply_v_reasoning if x[1]])
+tr.set_title("Bayesian")
+fr.hist([x[0] for x in ply_v_reasoning if not x[1]])
+fr.set_title("Non-Bayesian")
+plt.show()
